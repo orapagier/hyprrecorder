@@ -1,0 +1,19 @@
+# Phase 1 validates these settings; capture and the UI arrive in later phases.
+version = 1
+
+[capture]
+mode = "screen" # "screen" or "region"; region is selected interactively later
+# monitor = "eDP-1" # Omit to select the focused display at recording start.
+# region = { x = 0, y = 0, width = 1280, height = 720 }
+
+[video]
+resolution = "native" # Or output dimensions, e.g. "1280x720".
+fps = 30
+cursor = true
+
+[audio]
+system = true
+microphone = true
+
+[output]
+directory = "~/Videos/Hyprrecorder"
