@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hyprrecorder capture workload</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; overflow: hidden; color: #fff; background: #132437; font: 18px system-ui, sans-serif; }
+  #pattern { position: fixed; inset: -64px; will-change: transform;
+    background: conic-gradient(#132437 25%, #1f4562 0 50%, #132437 0 75%, #1f4562 0);
+    background-size: 64px 64px; }
+  #rows { position: fixed; top: -80px; left: 12%; width: 76%; will-change: transform; }
+  .row { height: 40px; line-height: 40px; overflow: hidden; white-space: nowrap;
+    color: #fff; background: #132437cc; font: 22px/40px monospace; padding: 0 16px; }
+  header, footer { position: fixed; z-index: 1; left: 0; right: 0; padding: 18px 24px; background: #08131ff2; }
+  header { top: 0; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  h1 { margin: 0 auto 0 0; font-size: 22px; }
+  button { font: inherit; color: #fff; background: #244d6c; border: 1px solid #8ecbf0; border-radius: 6px; padding: 8px 16px; cursor: pointer; }
+  footer { bottom: 0; font-variant-numeric: tabular-nums; }
+  #rate { font-size: 24px; margin-bottom: 8px; }
+  #history { font-size: 14px; margin-top: 8px; overflow-wrap: anywhere; }
+  p { margin: 6px 0 0; font-size: 16px; }
+</style>
+<div id="pattern" aria-hidden="true"></div>
+<div id="rows" aria-hidden="true"></div>
+<header>
+  <h1>Hyprrecorder · continuous motion</h1>
+  <button id="fullscreen" type="button">Full screen</button>
+  <button id="pause" type="button" aria-pressed="false">Pause motion</button>
+  <button id="reset" type="button">Reset measurements</button>
+</header>
+<footer>
+  <div id="rate" aria-live="off">Browser update rate (rAF): measuring…</div>
+  <div id="status">Motion active · keep this page visible during capture.</div>
+  <div id="summary">Lowest sampled rate since reset: measuring…</div>
+  <div id="history">No samples recorded yet.</div>
+  <p>Local synthetic content only. The browser rate is separate from the recorder’s acquisition FPS.</p>
+</footer>
+<script>
+  "use strict";
+  const pattern = document.getElementById("pattern");
+  const rows = document.getElementById("rows");
+  const rate = document.getElementById("rate");
+  const status = document.getElementById("status");
+  const pause = document.getElementById("pause");
+  const fullscreen = document.getElementById("fullscreen");
+  const reset = document.getElementById("reset");
+  const summary = document.getElementById("summary");
+  const sampleHistory = document.getElementById("history");
+  for (let index = 0; index < 80; index++) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.textContent = "Hyprrecorder — scrolling text — 0123456789 — Aa Bb Cc — frame pacing";
+    rows.appendChild(row);
+  }
+  let running = true;
+  let last = null;
+  let sampleStart = null;
+  let intervals = 0;
+  let maxGap = 0;
+  let phase = 0;
+  let epoch = null;
+  let lowestRate = null;
+  let largestGap = 0;
+  let samples = [];
+  function resetSample() {
+    last = null;
+    sampleStart = null;
+    intervals = 0;
+    maxGap = 0;
+  }
+  reset.addEventListener("click", () => {
+    resetSample();
+    epoch = null;
+    lowestRate = null;
+    largestGap = 0;
+    samples = [];
+    summary.textContent = "Lowest sampled rate since reset: measuring…";
+    sampleHistory.textContent = "No samples recorded yet.";
+    rate.textContent = running ? "Browser update rate (rAF): measuring…" : "Motion paused";
+  });
+  pause.addEventListener("click", () => {
+    running = !running;
+    pause.textContent = running ? "Pause motion" : "Resume motion";
+    pause.setAttribute("aria-pressed", String(!running));
+    status.textContent = running ? "Motion active · keep this page visible during capture." : "Motion paused · this is an idle-content sample.";
+    rate.textContent = running ? "Browser update rate (rAF): measuring…" : "Motion paused";
+    resetSample();
+  });
+  fullscreen.addEventListener("click", async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      status.textContent = "Full screen was unavailable. Use the browser’s full-screen shortcut.";
+    }
+  });
+  document.addEventListener("fullscreenchange", () => {
+    fullscreen.textContent = document.fullscreenElement ? "Exit full screen" : "Full screen";
+    resetSample();
+  });
+  document.addEventListener("visibilitychange", () => {
+    resetSample();
+    if (!document.hidden && running) rate.textContent = "Browser update rate (rAF): measuring…";
+  });
+  function tick(now) {
+    requestAnimationFrame(tick);
+    if (document.hidden || !running) { resetSample(); return; }
+    if (epoch === null) epoch = now;
+    if (sampleStart === null) sampleStart = now;
+    if (last !== null) {
+      const delta = now - last;
+      phase += delta;
+      intervals++;
+      maxGap = Math.max(maxGap, delta);
+    }
+    last = now;
+    // Fixed speeds and repeating geometry; no scroll input or external assets.
+    pattern.style.transform = `translate3d(${(phase * 0.09) % 64}px, ${(phase * 0.06) % 64}px, 0)`;
+    rows.style.transform = `translate3d(0, -${(phase * 0.08) % 40}px, 0)`;
+    const elapsed = now - sampleStart;
+    if (elapsed >= 1000) {
+      const fps = intervals * 1000 / elapsed;
+      rate.textContent = `Browser update rate (rAF): ${fps.toFixed(1)} FPS · largest interval: ${maxGap.toFixed(1)} ms`;
+      lowestRate = lowestRate === null ? fps : Math.min(lowestRate, fps);
+      largestGap = Math.max(largestGap, maxGap);
+      samples.push(`+${((now - epoch) / 1000).toFixed(1)}s: ${fps.toFixed(1)}`);
+      if (samples.length > 20) samples.shift();
+      summary.textContent = `Lowest sampled rate since reset: ${lowestRate.toFixed(1)} FPS · largest interval: ${largestGap.toFixed(1)} ms`;
+      sampleHistory.textContent = `Recent samples (FPS): ${samples.join(" · ")}`;
+      sampleStart = now;
+      intervals = 0;
+      maxGap = 0;
+    }
+  }
+  requestAnimationFrame(tick);
+</script>
+</html>

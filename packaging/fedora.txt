@@ -1,0 +1,19 @@
+# Fedora build inputs; select one consistent FFmpeg provider. No auto-install.
+rust
+cargo
+gcc
+gcc-c++
+pkgconf-pkg-config
+qt6-qtbase-devel
+qt6-qtwayland
+ffmpeg-free-devel
+mesa-libgbm-devel
+libdrm-devel
+pulseaudio-libs-devel
+# Runtime helpers; the audio server may be PipeWire Pulse compatibility.
+pulseaudio-utils
+slurp
+xdg-utils
+libnotify
+# Hardware-specific VA-API H.264 driver is required; validate with doctor.
+# Optional portal investigation only: glib2-devel, pipewire-devel

@@ -1,0 +1,15 @@
+# Arch build/runtime inputs; hardware driver selection remains explicit.
+rust
+base-devel
+pkgconf
+qt6-base
+qt6-wayland
+ffmpeg
+mesa
+libdrm
+libpulse
+slurp
+xdg-utils
+libnotify
+# Intel: validate the appropriate intel-media-driver/libva-intel-driver.
+# Other GPUs need separate acceptance. Optional portal investigation: pipewire

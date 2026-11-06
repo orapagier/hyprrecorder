@@ -9,6 +9,7 @@ pub struct Settings {
     pub video: Video,
     pub audio: Audio,
     pub output: Output,
+    pub recording: Recording,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -59,6 +60,19 @@ pub struct Output {
     pub directory: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Recording {
+    pub countdown_seconds: u32,
+}
+impl Default for Recording {
+    fn default() -> Self {
+        Self {
+            countdown_seconds: 3,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Resolution {
     Native,
@@ -73,6 +87,7 @@ impl Default for Settings {
             video: Video::default(),
             audio: Audio::default(),
             output: Output::default(),
+            recording: Recording::default(),
         }
     }
 }
@@ -130,6 +145,70 @@ pub fn parse_resolution(value: &str) -> Result<Resolution, String> {
 }
 
 impl Settings {
+    #[cfg(feature = "recorder")]
+    pub fn user_path() -> Result<PathBuf, String> {
+        let root = std::env::var_os("XDG_CONFIG_HOME")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+            .ok_or("HOME and XDG_CONFIG_HOME are unset")?;
+        if !root.is_absolute() {
+            return Err("Config directory must be absolute".into());
+        }
+        Ok(root.join("hyprrecorder/settings.toml"))
+    }
+    #[cfg(feature = "recorder")]
+    pub fn load_user() -> Result<Self, String> {
+        let path = Self::user_path()?;
+        match std::fs::read_to_string(&path) {
+            Ok(text) => Self::parse(&text),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                let mut settings = Self::default();
+                if let Ok(v) = crate::process::run(
+                    "xdg-user-dir",
+                    &["VIDEOS"],
+                    std::time::Duration::from_secs(1),
+                ) {
+                    let path = v.stdout.trim();
+                    if v.success
+                        && Path::new(path).is_absolute()
+                        && !path.chars().any(char::is_control)
+                    {
+                        settings.output.directory = Path::new(path)
+                            .join("Hyprrecorder")
+                            .to_string_lossy()
+                            .into_owned();
+                    }
+                }
+                Ok(settings)
+            }
+            Err(e) => Err(format!("Cannot read saved settings: {e}")),
+        }
+    }
+    #[cfg(feature = "recorder")]
+    pub fn save_user(&self) -> Result<(), String> {
+        self.validate()?;
+        let path = Self::user_path()?;
+        self.save_at(&path)
+    }
+    #[cfg(feature = "recorder")]
+    fn save_at(&self, path: &Path) -> Result<(), String> {
+        self.validate()?;
+        if path.exists() {
+            let previous = Self::load(path)?;
+            crate::output::atomic_write(
+                &path.with_file_name("settings.last-good.toml"),
+                toml::to_string_pretty(&previous)
+                    .map_err(|e| e.to_string())?
+                    .as_bytes(),
+            )?;
+        }
+        crate::output::atomic_write(
+            path,
+            toml::to_string_pretty(self)
+                .map_err(|e| e.to_string())?
+                .as_bytes(),
+        )
+    }
     pub fn load(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
@@ -143,6 +222,9 @@ impl Settings {
     }
 
     pub fn validate(&self) -> Result<(), String> {
+        if self.recording.countdown_seconds > 30 {
+            return Err("Countdown must be 0–30 seconds".into());
+        }
         if self.version != 1 {
             return Err(format!(
                 "Unsupported settings version {}; expected 1",
@@ -281,5 +363,39 @@ mod tests {
             s.output_directory().unwrap(),
             PathBuf::from("/tmp/$(touch do-not-run)")
         );
+    }
+}
+
+#[cfg(all(test, feature = "recorder"))]
+mod persistence_tests {
+    use super::*;
+    #[test]
+    fn failed_or_malformed_saves_preserve_original_and_valid_saves_keep_last_good() {
+        let root = std::env::temp_dir().join(format!("hyprrecorder-prefs-{}", std::process::id()));
+        std::fs::create_dir(&root).unwrap();
+        let path = root.join("settings.toml");
+        let mut settings = Settings::default();
+        settings.save_at(&path).unwrap();
+        settings.video.fps = 60;
+        settings.save_at(&path).unwrap();
+        assert_eq!(
+            Settings::load(&root.join("settings.last-good.toml"))
+                .unwrap()
+                .video
+                .fps,
+            30
+        );
+        assert_eq!(Settings::load(&path).unwrap().video.fps, 60);
+        std::fs::write(&path, b"malformed = [").unwrap();
+        assert!(settings.save_at(&path).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), b"malformed = [");
+        assert_eq!(
+            Settings::load(&root.join("settings.last-good.toml"))
+                .unwrap()
+                .video
+                .fps,
+            30
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 }

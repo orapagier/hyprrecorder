@@ -37,10 +37,10 @@ impl Report {
 
     pub fn print(&self) {
         println!(
-            "Hyprrecorder {} — Phase 1 diagnostics",
+            "Hyprrecorder {} — capability diagnostics",
             self.application_version
         );
-        println!("Recording is not implemented yet. Available tools do not establish capture readiness.\n");
+        println!("Recording engine in this build: {}. Available tools do not establish capture readiness.\n",self.recording_implemented);
         for check in &self.checks {
             let label = match check.status {
                 Status::Available => "available",
@@ -95,7 +95,7 @@ pub fn collect(probe_encoder: bool) -> Report {
         schema_version: 1,
         application_version: env!("CARGO_PKG_VERSION"),
         phase: 1,
-        recording_implemented: false,
+        recording_implemented: cfg!(feature = "recorder"),
         checks: Vec::new(),
     };
     let wayland = env::var_os("WAYLAND_DISPLAY").is_some();

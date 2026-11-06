@@ -311,10 +311,235 @@ Hyprland initially; AMD/NVIDIA/other compositors require separate validation.
 
 ## Status and next action
 
+
+### Application continuation — 2026-10-22
+
+Implementation now includes a feature-gated native Qt window and app-owned
+recording pipeline. This status supersedes the older continuation entries below;
+it does not turn unperformed live checks into passes.
+
+| Phase | Implementation / acceptance status |
+| --- | --- |
+| 1 | Foundation retained; capability reporting reflects the selected build |
+| 2 | Direct ext/linear DMA-BUF/VA-API selected provisionally for implementation; matched external comparisons and portal acceptance remain open |
+| 3 | Recording lifecycle, pinned monitor, bounded GPU acquisition/repeats, fit/padding, MKV finalization, no-overwrite outputs and stop/status implemented; new live video/error acceptance pending |
+| 4 | Independent default-source capture, timestamp placement, mixed PCM track and explicit source errors implemented; actual devices and 30-minute offset/drift acceptance pending |
+| 5 | Slurp drag/Escape integration, logical-to-pixel regions, view-hide acknowledgement, countdown, repeated-launch protection, lock/suspend/mode-change failure paths implemented; live invisibility/hotplug checks pending |
+| 6 | Qt 6 Widgets window, native focus controls, theme, atomic preferences and last-good recovery implemented; offscreen checks available, physical keyboard/pointer/HiDPI/idle measurements pending |
+| 7 | User-local installer, desktop entry/icon, Fedora/Arch inputs, XDG Videos, saved notification and Open folder implemented; shortcuts intentionally require live conflict review and fresh-distro acceptance remains pending |
+| 8 | Synthetic media/mixer/failure checks, installer preservation, repeatable validation/license inventories and release checklist implemented; long-run/live hardening and release sign-off remain open |
+
+Details: [application architecture and limits](docs/implementation.md),
+[required live release checks](docs/release-checklist.md). Rotated/flipped and odd
+native sources are explicitly unsupported; required automatic one-pixel native
+padding remains open. No release is tagged or claimed. The sandbox denies GPU,
+compositor and audio access plus Unix socket bind/send; listener acceptance runs
+with `python3 tools/validate.py --session` in the desktop terminal. No desktop
+shortcuts, packages or Hyprshell files changed.
+
+Validation: formatting and strict default/all-feature Clippy passed. Default
+build: 22 Rust tests passed. All features: 68 Rust tests passed, one real-listener
+test explicitly ignored because the sandbox forbids sockets. Twelve Python
+harness/installer tests passed. Synthetic codec-fixture/mixed-PCM mux decoding,
+private output, persistence, geometry and offscreen Qt paint/focus checks passed.
+The desktop release build passed with locked/offline dependencies. Evidence:
+`/tmp/hyprrecorder-validation-20261022-release-candidate` (checks, logs, native
+versions and Rust dependency licenses).
+
+An isolated-prefix installation passed binary hash, desktop-file, icon and
+window checks. Installed the matching release at `~/.local/bin/hyprrecorder`,
+with `io.github.hyprrecorder.desktop`, SVG icon and installation receipt under
+`~/.local/share`. The installed copy passed build-info, hash, desktop-file and
+isolated offscreen window checks. No user preferences or recordings were created.
+Launch `hyprrecorder` in the desktop; request save with `hyprrecorder stop`.
+
+Task checkpoints are retained under
+`~/.local/state/hyprshell/agent-backups/`: implementation `20261022T022726Z-2uij9uwo`,
+capability reporting `20261022T024739Z-mhqhe8no`, installation
+`20261022T030357Z-v7wfls1u`. The first contains `rollback.sh` restoring all three
+in order, and a private task diff preserving the pre-existing Phase 2 work.
+The local Git task commit remains deferred until required live acceptance is
+complete; no existing staged or unstaged work was discarded.
+
+### Earlier investigation history
+
 - Phase 1: implemented; validation evidence tracked in `docs/phase-1.md`.
-- Phases 2–8: not started.
-- Next: satisfy Phase 2's build prerequisites, run the first real capture spike
-  in an accessible graphical session, then record the backend decision.
+- Phase 2: in progress. Native protocol discovery, an owned Rust wl_shm capture
+  spike with embedded FFmpeg/VA-API encoding, and external comparison tooling
+  are implemented. Evidence/limits are in `docs/backend-decision.md`. No backend
+  selected; a first real 1080p capture finalizes and decodes, and the user accepted
+  its motion, colors and cursor. Controlled comparisons remain open.
+- Phases 3–8: not started.
+- User-session continuation: protocol advertisement and synthetic VA-API H.264
+  encoding passed. The owned ten-second capture produced 287 matching decoded
+  H.264 frames; actual acquisition was about 28.66 FPS, below the requested 30.
+- FFmpeg build prerequisites: installed by the user in additions-only DNF
+  transaction 32. Offline feature build and synthetic codec tests now pass.
+- The first 60-FPS attempt was interrupted at about 41.6 seconds and finalized
+  1861 matching decoded frames at about 44.73 FPS. Capture/encode overlap with
+  one queued frame is now implemented and tested synthetically; its live effect
+  and visual behavior remain unverified.
+- The first overlap attempt failed after 191 frames with a retryable Wayland
+  `WouldBlock` result wrongly treated as fatal. Socket read/flush retry handling
+  is corrected with regression tests. A subsequent full minute completed without
+  interruption/error and decoded all 1809 reported frames, at about 30.15 FPS
+  rather than the requested 60. This validates that run's completion, not 60-FPS
+  performance or latest visual quality.
+- User confirmed the selected monitor is at 60.008 Hz, scale 1. The ten-second
+  wlr source-only probe acquired 287 frames at 28.687 FPS, with no encoding and
+  mean acquisition latency 34.816 ms. This locates a limit in acquisition for
+  that run; it does not identify a compositor or driver fault.
+- An explicit ext-image-copy-capture SHM backend is implemented for comparison,
+  retaining wlr as the default. Its first live source-only run completed with
+  120 frames at 11.951 FPS: median acquisition 32.572 ms, p95 397.749 ms,
+  maximum 499.887 ms. The user confirmed scrolling the conversation during the
+  run; it must not be dismissed as an idle-screen measurement. Manual scrolling
+  does not establish a controlled 60-Hz damage workload or backend ranking.
+- The user installed mesa-libgbm-devel and upgraded six Mesa runtime packages to
+  26.2.5-1.fc44. A separate dmabuf-spike feature now implements a report-only
+  ext DMA-BUF source probe with GBM allocation, device matching, explicit
+  format/modifier negotiation and one reused GPU buffer. Native/feature checks
+  pass. The first live DMA-BUF probe imported/reused a three-plane XRGB8888
+  buffer and acquired 398 frames at 39.80 FPS without error. Capture median
+  17.018 ms/p95 43.242 ms; this proves delivery, not image correctness or 60 FPS.
+- An explicit --unpaced probe mode now removes the client's FPS-cap sleep while
+  retaining one outstanding frame and duration/cancellation checks. Default
+  pacing is unchanged. The first unpaced run acquired 478 frames at 47.897 FPS,
+  without error; median acquisition 17.449 ms, p95 35.604 ms. Sustained 60 FPS
+  remains unproven, and manual scrolling does not isolate the cap's effect.
+- A local continuous-motion/text fixture now displays browser callback rate for
+  repeatable source tests. Its first unpaced run completed with 327 frames at
+  32.750 FPS. A user screenshot shows browser callbacks at 60.0 FPS and largest
+  interval 16.7 ms at that moment; it does not measure every source presentation.
+- An explicit --linear probe option now restricts allocation to negotiated
+  modifier zero, with no layout/SHM fallback. The prior three-plane layout remains
+  the default driver-selected choice. Linear import succeeded with one plane:
+  368 frames/36.799 FPS in the first run, whose animation was subsequently
+  reported absent; 361 frames/36.146 FPS with the animation running in the next.
+  The user reports browser rates sometimes below 10, and a steady 60 FPS observed
+  after capture stops. Neither run proves sustained 60 FPS or a layout ranking.
+- The fixture now retains timestamped callback samples and its lowest sampled
+  rate until manual reset/reload. This makes capture-period behavior inspectable
+  afterwards while preserving the existing scene, pause and full-screen controls.
+- The browser was on workspace 2 and terminal on workspace 1. Keeping workspace
+  2 visible for the next linear unpaced run delivered 595 frames at59.648FPS,
+  without interruption/error; acquisition median16.653ms, p9518.333ms. This
+  supports visibility as the earlier confounder, not a general layout ranking.
+- A separate gpu-encode-spike feature now connects linear DMA-BUF import,
+  VA-API GPU RGB-to-NV12 conversion and H.264/MKV via spike-gpu. It serializes
+  capture/conversion/encode and explicitly synchronizes VPP before RGB buffer
+  reuse. CPU capture/encoding paths and source probes remain available.
+- The first GPU video completed ten seconds with 555 submitted/decoded frames
+  at 55.528 FPS, no decode errors and strictly increasing PTS. The user accepted
+  motion, text, colors, orientation and cursor. No audio was expected or present.
+  This validates one short recording, not sustained 60 FPS or a backend winner.
+- The first unpaced GPU minute completed with 3,582 matching decoded frames at
+  59.719 FPS and no interruption/capture/decode error. Packet PTS/DTS and decoded
+  PTS increase strictly. This is one of the three required 1080p60 samples;
+  that minute's visual acceptance remains pending.
+- Three unpaced 1080p60 minute samples now complete: 3,582/3,542/3,586 matching
+  decoded frames at 59.719/59.052/59.785 FPS. All finalized without interruption
+  or errors and decode fully with increasing PTS. Peak RSS 119.6–119.8 MiB.
+  Three paced 1080p30 samples also passed: 1,790/1,789/1,790 matching decoded
+  frames at 29.838/29.820/29.834 FPS, with increasing PTS and no decode errors.
+  Sample 03 failed on storage quota; sample 04 replaces it. The user visually
+  accepted all six completed minute-long recordings.
+- GPU spike crop/scale controls are implemented: `--crop X,Y,W,H` in monitor-local
+  physical pixels and `--size WIDTHxHEIGHT`, with GPU VPP conversion/scaling,
+  checked bounds, even dimensions and exact aspect-ratio validation. The report
+  retains source size plus resolved crop/output geometry; the countdown prints
+  upscaling and cursor state. Cursor remains on unless `--no-cursor` is given.
+  Arbitrary-aspect padding and interactive region selection remain later work.
+- The first crop/downscale/cursor-off sample finalized 282 matching decoded
+  frames at 28.276 FPS, producing 640×360 H.264 with square pixels. Packet
+  PTS/DTS and decoded PTS increase strictly; decoding with the demuxer timebase
+  reports no errors. The user accepted the central crop, proportions and absent
+  cursor. This verifies one short sample, not sustained 30-FPS performance.
+- The full-source downscale/cursor-on sample finalized 293 matching decoded
+  frames at 29.292 FPS, producing 1280×720 H.264, SAR 1:1 and DAR 16:9.
+  Packet PTS/DTS and decoded PTS increase strictly; full decode is error-free.
+  The user accepted the whole-screen view, proportions and visible cursor.
+  Both short crop/scale and cursor-mode checks passed; arbitrary-aspect padding,
+  other transforms/scales and sustained performance remain unverified.
+- Portal continuation: `probe-portal --json` now queries ScreenCast version,
+  source types and cursor modes through bounded shell-free busctl calls, without
+  creating a session or capture buffers. The user's graphical-terminal run
+  passed: version 6, source mask 7 (monitor/window/virtual), cursor mask 3
+  (hidden/embedded). No property errors. Capture remains unverified; next portal
+  work is a persistent D-Bus session and actual PipeWire buffer acquisition.
+  The agent's own user-bus access remains restricted.
+- An optional `portal-spike` feature now implements `probe-portal-source`:
+  persistent GIO portal requests/session, monitor picker, Unix-FD transfer and
+  PipeWire raw RGB SHM buffer delivery with timestamp counters and cleanup.
+  It saves no media and performs no encoding/audio/pixel inspection. Offline
+  validation is recorded in backend-decision.md; live session/delivery,
+  cancellation and resource cleanup acceptance remain pending. Next: run the
+  README command from the graphical terminal and share its JSON.
+- The first portal source run failed before session start with NoReply.
+  The local journal identifies a portal assertion on a missing session token
+  during CreateSession. The spike now supplies fresh valid session/request
+  tokens, with native argument regression checks and method-labeled errors.
+  Live retry and portal service recovery verification remain pending.
+- The token-corrected portal run started the session and opened its remote:
+  226 valid 1920x1080 buffers, zero rejected buffers, 226 strictly increasing
+  PTS samples over 10.004109 seconds (22.4908 delivery FPS). Its final error was
+  consistent with intentional pw_stream_destroy emitting UNCONNECTED. The
+  teardown callback now ignores only that intentional disconnect, retaining
+  unexpected disconnects and genuine errors. Native regression checks pass;
+  a clean live completion remains to be verified. Workload visibility during
+  this run is unconfirmed, so no backend performance ranking follows.
+- The teardown-corrected portal run completed cleanly: session and remote open,
+  230 valid 1920x1080 buffers, zero rejected, 230 strictly increasing PTS samples,
+  10.018044 seconds and 22.8588 delivery FPS. No interruption, cleanup_ok true,
+  error null. This confirms one clean source-only run. Image/cursor correctness,
+  interactive cancellation and controlled performance comparisons remain open.
+  Next portal investigation: negotiated stream rate and delivery timing, with
+  confirmed visible motion; this result alone does not identify the rate limit.
+- Portal source diagnostics now retain negotiated frame/max rates, format-event
+  count, process/empty-dequeue counts, valid-delivery and PTS interval summaries,
+  and main-loop iteration timing. Counters are bounded and capture scheduling is
+  unchanged. A new first-to-last arrival rate supplements the original elapsed
+  rate. Synthetic checks pass; live negotiated/timing evidence is pending.
+- First instrumented portal sample completed cleanly: 292 valid frames at
+  29.0763 delivery FPS, no rejected buffers or nonincreasing PTS. Negotiated
+  rate 0/1 (variable), max 120/1, one format event. Arrival/PTS means were
+  34.392/34.419 ms, while loop iterations peaked at 20.330 ms with none over
+  25 ms. No advertised 30-FPS cap or measured long client-loop stall is shown;
+  the rate limit's cause remains unidentified. Fixture visibility has still
+  not been explicitly confirmed. Controlled source comparison remains next.
+- A matched SHM source comparison runner now sequences wlr, ext and portal
+  probes with matching duration/FPS/cursor settings, retains raw reports/logs,
+  and summarizes first-to-last arrival rates. It defaults to a no-write dry run,
+  refuses existing destinations and stops on failed/interrupted/timed-out runs.
+  Visibility/picker-monitor confirmation stays explicitly pending. Next: run
+  the README comparison with the same visible fixture on the selected monitor;
+  inspect browser rates and source timing before altering scheduling. This
+  measures source delivery, not GPU encoding or a backend winner.
+- First matched SHM comparison completed all three ten-second/60-FPS requests
+  cleanly at 1920x1080 with cursor hidden: wlr 369 frames / 36.8958 FPS,
+  ext 392 / 39.2183 FPS, portal 292 / 29.1218 FPS (arrival-span rates).
+  Portal reports zero rejected buffers/nonincreasing PTS, cleanup success,
+  variable rate 0/1 and max 120/1. A 213.638-ms delivery gap aligns with a
+  214.213-ms PTS gap; measured client-loop iterations stay below 20.312 ms.
+  Correction: the user did not open a browser or the animated workload page
+  for these tests. The agent had omitted that setup from its runnable commands
+  and incorrectly interpreted the earlier confirmation as workload acceptance.
+  Monitor choice was confirmed; continuous-motion workload was not established.
+  These remain valid source-delivery measurements of unspecified desktop content,
+  not a controlled motion comparison or evidence of a fixed source FPS ceiling.
+- Linear unpaced DMA-BUF source follow-up completed: 441 frames at 44.1443 FPS,
+  1920x1080, cursor off, modifier zero, one plane and buffer reuse. No capture
+  error/interruption or CPU pixel access. Arrival/source timestamps strictly
+  increase. Median arrival/source intervals are 16.860/16.804 ms, with maxima
+  190.070/190.203 ms; cadence is variable rather than a uniform 44-FPS interval.
+  This run does not isolate a transport bottleneck or measure GPU encoding.
+  The user used no browser/test page for this run; no browser-rate history
+  exists. Actual desktop motion was unspecified. Preserve these raw results,
+  but do not diagnose a performance regression or change scheduling from them.
+  Any future controlled motion test must include explicit setup instructions.
+- Next: investigate overlap/performance and
+  portal capture. Historical SHM samples predate the Mesa upgrade and need
+  matching conditions for comparison. External recorder installation is deferred.
 - No existing desktop configuration or package installation is part of Phase 1.
 
 ## Primary references

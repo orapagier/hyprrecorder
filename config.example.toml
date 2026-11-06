@@ -1,4 +1,4 @@
-# Phase 1 validates these settings; capture and the UI arrive in later phases.
+# Settings for the desktop/recorder build. Diagnostics builds can validate them.
 version = 1
 
 [capture]
@@ -17,3 +17,6 @@ microphone = true
 
 [output]
 directory = "~/Videos/Hyprrecorder"
+
+[recording]
+countdown_seconds = 3
